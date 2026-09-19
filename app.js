@@ -1,284 +1,231 @@
-const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbwyHzBz-VtWFPzl3h0d3o6cKgMhnxs1G8iZUg7HkCjK4clB9CJP-z_FlXA1eyTtfQmkOA/exec',
-  FAVORITES_KEY: 'katalog_uti_v2_favorites',
-  CATEGORIES: ['Favorit','Semua','Fashion','Rumah Tangga','Sport & Hobi','Otomotif','Gadget','Kesehatan','Kecantikan'],
-  BADGES: ['Hot','Best Seller','New','Best Choice','Official Store']
-};
+const PRODUCTS = [
+  {
+    id: "p1",
+    title: "Hoodie Oversize Unisex",
+    brand: "Erigo",
+    category: "Fashion",
+    description: "Nyaman dipakai, cocok untuk segala aktivitas.",
+    badge: "hot",
+    badgeLabel: "🔥 Hot",
+    callout: "Murce Banget!",
+    tone: 0,
+    shopeeUrl: "https://shopee.co.id",
+    tiktokUrl: "https://tiktok.com"
+  },
+  {
+    id: "p2",
+    title: "Castrol Official",
+    brand: "Castrol",
+    category: "Otomotif",
+    description: "Performa terbaik untuk kendaraanmu.",
+    badge: "official",
+    badgeLabel: "☑ Official Store",
+    callout: "Pas Butuh",
+    tone: 4,
+    shopeeUrl: "https://shopee.co.id",
+    tiktokUrl: "https://tiktok.com"
+  },
+  {
+    id: "p3",
+    title: "Skincare Set",
+    brand: "Wardah",
+    category: "Kecantikan",
+    description: "Rawat diri, rayakan versi terbaikmu!",
+    badge: "best",
+    badgeLabel: "✨ Best Choice",
+    callout: "Auto Glowing",
+    tone: 5,
+    shopeeUrl: "https://shopee.co.id",
+    tiktokUrl: "https://tiktok.com"
+  }
+];
 
-const state = {
-  products: [],
-  category: 'Semua',
-  badge: 'Semua',
-  query: ''
-};
+const CATEGORIES = ["Semua", "Fashion", "Otomotif", "Kecantikan", "Elektronik", "Rumah Tangga"];
+const BADGES = [
+  { id: "all", label: "Semua" },
+  { id: "hot", label: "🔥 Hot" },
+  { id: "best", label: "👑 Best Seller" },
+  { id: "official", label: "☑ Official" }
+];
 
-const els = {
-  search: document.getElementById('searchInput'),
-  clear: document.getElementById('clearSearch'),
-  categoryChips: document.getElementById('categoryChips'),
-  badgeChips: document.getElementById('badgeChips'),
-  list: document.getElementById('productList'),
-  empty: document.getElementById('emptyState'),
-  count: document.getElementById('resultCount'),
-  reset: document.getElementById('resetFilters'),
-  emptyReset: document.getElementById('emptyReset'),
-  disclaimer: document.getElementById('disclaimerDialog'),
-  disclaimerBtn: document.getElementById('disclaimerBtn'),
-  closeDisclaimer: document.getElementById('closeDisclaimer'),
-  modalOk: document.getElementById('modalOk'),
-  footerCta: document.getElementById('footerCta'),
-  toast: document.getElementById('toast')
-};
+let selectedCategory = "Semua";
+let selectedBadge = "all";
+let searchQuery = "";
+let favorites = JSON.parse(localStorage.getItem("uti_favs") || "[]");
 
-document.addEventListener('DOMContentLoaded', init);
+const categoryChips = document.getElementById("categoryChips");
+const badgeChips = document.getElementById("badgeChips");
+const productList = document.getElementById("productList");
+const resultCount = document.getElementById("resultCount");
+const searchInput = document.getElementById("searchInput");
+const clearSearch = document.getElementById("clearSearch");
+const resetFilters = document.getElementById("resetFilters");
+const emptyState = document.getElementById("emptyState");
+const emptyReset = document.getElementById("emptyReset");
+const toast = document.getElementById("toast");
 
 function init() {
   renderCategoryChips();
   renderBadgeChips();
-  bindEvents();
-  loadProducts();
-}
-
-function bindEvents() {
-  els.search.addEventListener('input', () => {
-    state.query = els.search.value.trim().toLowerCase();
-    els.clear.style.display = state.query ? 'grid' : 'none';
-    renderProducts();
-  });
-
-  els.clear.addEventListener('click', () => {
-    els.search.value = '';
-    state.query = '';
-    els.clear.style.display = 'none';
-    renderProducts();
-    els.search.focus();
-  });
-
-  els.reset.addEventListener('click', resetFilters);
-  els.emptyReset.addEventListener('click', resetFilters);
-
-  els.disclaimerBtn.addEventListener('click', () => els.disclaimer.showModal());
-  els.closeDisclaimer.addEventListener('click', () => els.disclaimer.close());
-  els.modalOk.addEventListener('click', () => els.disclaimer.close());
-
-  els.footerCta.addEventListener('click', () => {
-    window.scrollTo({top: 0, behavior: 'smooth'});
-    showToast('Yuk cari produk favoritmu ✨');
-  });
+  renderProducts();
+  setupEventListeners();
 }
 
 function renderCategoryChips() {
-  els.categoryChips.innerHTML = CONFIG.CATEGORIES.map(c => {
-    const cls = c === 'Favorit' ? 'chip fav' : 'chip';
-    return `<button class="${cls} ${state.category === c ? 'active':''}" data-category="${escapeAttr(c)}">${categoryIcon(c)} ${escapeHtml(c)}</button>`;
-  }).join('');
-
-  els.categoryChips.querySelectorAll('[data-category]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      state.category = btn.dataset.category;
-      renderCategoryChips();
-      renderProducts();
-    });
+  let html = `<button class="chip ${selectedCategory === 'Favorit' ? 'fav active' : ''}" data-cat="Favorit">♥ Favorit (${favorites.length})</button>`;
+  CATEGORIES.forEach(cat => {
+    const active = selectedCategory === cat ? "active" : "";
+    html += `<button class="chip ${active}" data-cat="${cat}">${cat}</button>`;
   });
+  categoryChips.innerHTML = html;
 }
 
 function renderBadgeChips() {
-  const all = ['Semua', ...CONFIG.BADGES];
-  els.badgeChips.innerHTML = all.map(b =>
-    `<button class="chip badge-chip ${state.badge === b ? 'active':''}" data-badge="${escapeAttr(b)}">${badgeIcon(b)} ${escapeHtml(b)}</button>`
-  ).join('');
-
-  els.badgeChips.querySelectorAll('[data-badge]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      state.badge = btn.dataset.badge;
-      renderBadgeChips();
-      renderProducts();
-    });
+  let html = "";
+  BADGES.forEach(b => {
+    const active = selectedBadge === b.id ? "active" : "";
+    html += `<button class="chip badge-chip ${active}" data-badge="${b.id}">${b.label}</button>`;
   });
+  badgeChips.innerHTML = html;
 }
 
-function loadProducts() {
-  if (!CONFIG.API_URL || CONFIG.API_URL.includes('PASTE_APPS')) {
-    state.products = demoProducts();
-    showToast('Mode demo aktif — masukkan URL Apps Script untuk data Google Sheet.');
-    renderProducts();
-    return;
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add("show");
+  setTimeout(() => toast.classList.remove("show"), 2000);
+}
+
+function toggleFav(id) {
+  if (favorites.includes(id)) {
+    favorites = favorites.filter(item => item !== id);
+    showToast("Dihapus dari favorit");
+  } else {
+    favorites.push(id);
+    showToast("Ditambahkan ke favorit ❤️");
   }
-
-  const callback = 'katalogUtiCallback_' + Date.now();
-  window[callback] = data => {
-    delete window[callback];
-    if (!data || !data.ok) {
-      state.products = demoProducts();
-      showToast('Data Google Sheet gagal dimuat. Menampilkan demo.');
-    } else {
-      state.products = Array.isArray(data.products) ? data.products : [];
-    }
-    renderProducts();
-  };
-
-  const script = document.createElement('script');
-  script.src = CONFIG.API_URL + (CONFIG.API_URL.includes('?') ? '&' : '?') +
-    'action=products&callback=' + encodeURIComponent(callback);
-  script.onerror = () => {
-    delete window[callback];
-    state.products = demoProducts();
-    showToast('Koneksi API gagal. Menampilkan demo.');
-    renderProducts();
-  };
-  document.body.appendChild(script);
-
-  setTimeout(() => {
-    if (window[callback]) {
-      delete window[callback];
-      state.products = demoProducts();
-      showToast('API terlalu lama merespons. Menampilkan demo.');
-      renderProducts();
-    }
-  }, 10000);
+  localStorage.setItem("uti_favs", JSON.stringify(favorites));
+  renderCategoryChips();
+  renderProducts();
 }
 
 function renderProducts() {
-  const products = filteredProducts();
-  els.count.textContent = `${products.length} produk`;
-  els.list.innerHTML = products.map((p, i) => productCard(p, i)).join('');
-  els.empty.classList.toggle('hidden', products.length !== 0);
-  els.list.classList.toggle('hidden', products.length === 0);
+  let filtered = PRODUCTS.filter(p => {
+    if (selectedCategory === "Favorit") {
+      if (!favorites.includes(p.id)) return false;
+    } else if (selectedCategory !== "Semua" && p.category !== selectedCategory) {
+      return false;
+    }
 
-  els.list.querySelectorAll('[data-fav]').forEach(btn => {
-    btn.addEventListener('click', () => toggleFavorite(btn.dataset.fav));
+    if (selectedBadge !== "all" && p.badge !== selectedBadge) {
+      return false;
+    }
+
+    if (searchQuery.trim() !== "") {
+      const q = searchQuery.toLowerCase();
+      const matchTitle = p.title.toLowerCase().includes(q);
+      const matchBrand = p.brand.toLowerCase().includes(q);
+      const matchCat = p.category.toLowerCase().includes(q);
+      if (!matchTitle && !matchBrand && !matchCat) return false;
+    }
+
+    return true;
   });
-}
 
-function filteredProducts() {
-  const favs = getFavorites();
-  return state.products.filter(p => {
-    const matchCat =
-      state.category === 'Semua' ? true :
-      state.category === 'Favorit' ? favs.has(String(p.id)) :
-      p.category === state.category;
+  resultCount.textContent = `${filtered.length} produk ditemukan`;
 
-    const matchBadge =
-      state.badge === 'Semua' ? true : p.badge === state.badge;
+  if (filtered.length === 0) {
+    productList.innerHTML = "";
+    emptyState.classList.remove("hidden");
+    return;
+  }
 
-    const haystack = [
-      p.item,p.brand,p.category,p.description,p.callout,p.badge
-    ].join(' ').toLowerCase();
+  emptyState.classList.add("hidden");
 
-    return matchCat && matchBadge && (!state.query || haystack.includes(state.query));
+  let html = "";
+  filtered.forEach(p => {
+    const isFav = favorites.includes(p.id);
+    html += `
+      <article class="product-card">
+        <div class="callout tone-${p.tone}">
+          <span>${p.callout}</span>
+        </div>
+        <div class="card-main">
+          <div class="topline">
+            <span class="badge ${p.badge}">${p.badgeLabel}</span>
+          </div>
+          <h3 class="product-title">${p.title}</h3>
+          <div class="brand">${p.brand}</div>
+          <span class="category">${p.category}</span>
+          <p class="description">${p.description}</p>
+          <div class="card-actions">
+            <button class="fav-btn ${isFav ? 'active' : ''}" onclick="toggleFav('${p.id}')">
+              ${isFav ? '♥' : '♡'}
+            </button>
+            <a href="${p.shopeeUrl}" target="_blank" class="store-btn shopee">🛍️ Shopee →</a>
+            <a href="${p.tiktokUrl}" target="_blank" class="store-btn tiktok">🎵 TikTok →</a>
+          </div>
+        </div>
+      </article>
+    `;
   });
+
+  productList.innerHTML = html;
 }
 
-function productCard(p, index) {
-  const fav = getFavorites().has(String(p.id));
-  const tone = index % 7;
-  const callout = p.callout || fallbackCallout(p.category, index);
-  const badge = p.badge || '';
-  const badgeClass = badgeCss(badge);
-  const shopee = validHttpUrl(p.shopeeUrl);
-  const tiktok = validHttpUrl(p.tiktokUrl);
+function setupEventListeners() {
+  categoryChips.addEventListener("click", e => {
+    if (e.target.classList.contains("chip")) {
+      selectedCategory = e.target.dataset.cat;
+      renderCategoryChips();
+      renderProducts();
+    }
+  });
 
-  return `
-    <article class="product-card">
-      <div class="callout tone-${tone}">
-        <span>${escapeHtml(callout)}</span>
-      </div>
-      <div class="card-main">
-        <div class="topline">
-          ${badge ? `<span class="badge ${badgeClass}">${badgeIcon(badge)} ${escapeHtml(badge)}</span>` : ''}
-        </div>
-        <h2 class="product-title">${escapeHtml(p.item)}</h2>
-        <div class="brand">${escapeHtml(p.brand || 'Pilihan Uti')}</div>
-        <span class="category">${categoryIcon(p.category)} ${escapeHtml(p.category)}</span>
-        <p class="description">${escapeHtml(p.description || 'Pilihan menarik yang layak kamu cek.')}</p>
-        <div class="card-actions">
-          <button class="fav-btn ${fav ? 'active':''}" data-fav="${escapeAttr(String(p.id))}" aria-label="Favorit">${fav ? '♥' : '♡'}</button>
-          <a class="store-btn shopee ${shopee ? '' : 'disabled'}" href="${shopee ? escapeAttr(shopee) : '#'}" target="_blank" rel="noopener noreferrer">🛍 Shopee →</a>
-          <a class="store-btn tiktok ${tiktok ? '' : 'disabled'}" href="${tiktok ? escapeAttr(tiktok) : '#'}" target="_blank" rel="noopener noreferrer">♪ TikTok →</a>
-        </div>
-      </div>
-    </article>
-  `;
-}
+  badgeChips.addEventListener("click", e => {
+    if (e.target.classList.contains("badge-chip")) {
+      selectedBadge = e.target.dataset.badge;
+      renderBadgeChips();
+      renderProducts();
+    }
+  });
 
-function toggleFavorite(id) {
-  const favs = getFavorites();
-  if (favs.has(id)) {
-    favs.delete(id);
-    showToast('Dihapus dari favorit');
-  } else {
-    favs.add(id);
-    showToast('Ditambahkan ke favorit 💗');
-  }
-  localStorage.setItem(CONFIG.FAVORITES_KEY, JSON.stringify([...favs]));
-  renderCategoryChips();
-  renderProducts();
-}
+  searchInput.addEventListener("input", e => {
+    searchQuery = e.target.value;
+    clearSearch.style.display = searchQuery ? "block" : "none";
+    renderProducts();
+  });
 
-function getFavorites() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(CONFIG.FAVORITES_KEY) || '[]');
-    return new Set(raw.map(String));
-  } catch (_) {
-    return new Set();
-  }
-}
+  clearSearch.addEventListener("click", () => {
+    searchInput.value = "";
+    searchQuery = "";
+    clearSearch.style.display = "none";
+    renderProducts();
+  });
 
-function resetFilters() {
-  state.category = 'Semua';
-  state.badge = 'Semua';
-  state.query = '';
-  els.search.value = '';
-  els.clear.style.display = 'none';
-  renderCategoryChips();
-  renderBadgeChips();
-  renderProducts();
-}
-
-function fallbackCallout(category, index) {
-  const map = {
-    'Fashion':['Murce ✨','Cocok Sih! 💗','Auto Kece! ✨','Ide Bagus! 👀'],
-    'Rumah Tangga':['Be Healthy 🌿','Pas Butuh 💡','Biar Rapi! 🏡','Cocok Sih! ✨'],
-    'Sport & Hobi':['Hiking Yuk! 🥾','Camping Yuk! ⛺','Gas Olahraga! 💪','Siap Aktivitas! 🔥'],
-    'Otomotif':['Pas Butuh 🚗','Gas Jalan! 🏁','Rawat Yuk! 🔧','Wajib Cek! 👀'],
-    'Gadget':['Ide Bagus! 💡','Upgrade Yuk! ⚡','Cocok Sih! ✨','Worth Cek! 👀'],
-    'Kesehatan':['Be Healthy 🌿','Jaga Diri 💚','Sehat Yuk! ✨'],
-    'Kecantikan':['Be Kind 💗','Self Care Yuk! ✨','Glow Up! 💖']
+  const resetAll = () => {
+    selectedCategory = "Semua";
+    selectedBadge = "all";
+    searchQuery = "";
+    searchInput.value = "";
+    clearSearch.style.display = "none";
+    renderCategoryChips();
+    renderBadgeChips();
+    renderProducts();
   };
-  const arr = map[category] || ['Ide Bagus! ✨','Cocok Sih! 💗','Pas Butuh! 👀'];
-  return arr[index % arr.length];
+
+  resetFilters.addEventListener("click", resetAll);
+  emptyReset.addEventListener("click", resetAll);
+
+  // Dialog Disclaimer
+  const dialog = document.getElementById("disclaimerDialog");
+  document.getElementById("disclaimerBtn").addEventListener("click", () => dialog.showModal());
+  document.getElementById("closeDisclaimer").addEventListener("click", () => dialog.close());
+  document.getElementById("modalOk").addEventListener("click", () => dialog.close());
+
+  document.getElementById("footerCta").addEventListener("click", () => {
+    showToast("Menampilkan semua produk pilihan ✨");
+    resetAll();
+  });
 }
 
-function demoProducts() {
-  return [
-    {id:'001',item:'Hoodie Oversize Unisex',brand:'Erigo',category:'Fashion',shopeeUrl:'https://shopee.co.id/',tiktokUrl:'https://www.tiktok.com/',callout:'Murce Banget!',description:'Nyaman dipakai, cocok untuk segala aktivitas.',badge:'Hot'},
-    {id:'002',item:'Tumbler Stainless 500ml',brand:'Tyeso',category:'Rumah Tangga',shopeeUrl:'https://shopee.co.id/',tiktokUrl:'https://www.tiktok.com/',callout:'Sehat Selalu',description:'Teman setia di setiap aktivitasmu.',badge:'Best Seller'},
-    {id:'003',item:'Sepatu Running Pria',brand:'Nike',category:'Sport & Hobi',shopeeUrl:'https://shopee.co.id/',tiktokUrl:'https://www.tiktok.com/',callout:'Gas Olahraga!',description:'Langkah nyaman, penuh semangat!',badge:'New'},
-    {id:'004',item:'iPhone 14 128GB',brand:'Apple',category:'Gadget',shopeeUrl:'https://shopee.co.id/',tiktokUrl:'https://www.tiktok.com/',callout:'Upgrade Yuk!',description:'Desain premium, performa luar biasa.',badge:'Official Store'},
-    {id:'005',item:'Castrol Official',brand:'Castrol',category:'Otomotif',shopeeUrl:'https://shopee.co.id/',tiktokUrl:'https://www.tiktok.com/',callout:'Pas Butuh',description:'Performa terbaik untuk kendaraanmu.',badge:'Official Store'},
-    {id:'006',item:'Skincare Set',brand:'Wardah',category:'Kecantikan',shopeeUrl:'https://shopee.co.id/',tiktokUrl:'https://www.tiktok.com/',callout:'Auto Glowing',description:'Rawat diri, rayakan versi terbaikmu!',badge:'Best Choice'}
-  ];
-}
-
-function categoryIcon(c) {
-  return ({'Favorit':'♥','Semua':'▦','Fashion':'♧','Rumah Tangga':'⌂','Sport & Hobi':'✚','Otomotif':'▣','Gadget':'▯','Kesehatan':'⊕','Kecantikan':'✿'})[c] || '✦';
-}
-function badgeIcon(b) {
-  return ({'Hot':'♨','Best Seller':'♛','New':'✦','Best Choice':'✧','Official Store':'▣','Semua':'✦'})[b] || '✦';
-}
-function badgeCss(b) {
-  return b === 'Hot' ? 'hot' : b === 'Best Seller' ? 'best' : b === 'New' ? 'new' : b === 'Best Choice' ? 'choice' : b === 'Official Store' ? 'official' : '';
-}
-function validHttpUrl(url) {
-  return /^https:\/\/[^\s]+$/i.test(String(url || '')) ? String(url) : '';
-}
-function escapeHtml(v) {
-  return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
-}
-function escapeAttr(v){ return escapeHtml(v); }
-function showToast(message) {
-  els.toast.textContent = message;
-  els.toast.classList.add('show');
-  clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => els.toast.classList.remove('show'), 2600);
-}
+document.addEventListener("DOMContentLoaded", init);
